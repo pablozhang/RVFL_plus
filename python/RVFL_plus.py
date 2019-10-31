@@ -6,7 +6,8 @@ from numpy.linalg import multi_dot
 class RVFL_plus(object):
     """
     The code of random vector functional link-plus (RVFL+) network is implemented in Python. If you would like
-    to use it in your researches, please cite the paper ''
+    to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Zhi-Xin Yang. A new learning paradigm 
+    for random vector functional-link network: RVFL+. Neural Networks, 122 (2019) pp.94-105"
 
     Parameters
     ----------

@@ -6,7 +6,8 @@ from sklearn.preprocessing import OneHotEncoder
 class KRVFL_plus(object):
     """
     The code of kernel random vector functional link-plus (KRVFL+) network is implemented in Python. If you would like
-    to use it in your researches, please cite the paper ''
+    to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Zhi-Xin Yang. A new learning paradigm for 
+    random vector functional-link network: RVFL+. Neural Networks 122 (2019) pp.94-105".
 
     Parameters
     ----------

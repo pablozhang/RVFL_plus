@@ -6,8 +6,8 @@ from sklearn.preprocessing import OneHotEncoder
 class KRVFL_plus(object):
     """
     The code of kernel random vector functional link-plus (KRVFL+) network is implemented in Python. If you would like
-    to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Zhi-Xin Yang. A new learning paradigm for 
-    random vector functional-link network: RVFL+. Neural Networks 122 (2019) pp.94-105".
+    to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Yang, Zhi-Xin. A new learning paradigm for
+    random vector functional-link network: RVFL+. Neural Networks 122 (2020) pp.94-105".
 
     Parameters
     ----------
@@ -28,38 +28,12 @@ class KRVFL_plus(object):
 
         self.kernel_name = kernel_name
         self.type = type
-
-    def _generate_kernel_matrix(self, x, kernel_name, y = None):
-
-        if y is None:
-            if kernel_name == 'rbf':
-                return rbf_kernel(x)
-            elif kernel_name == 'linear':
-                return linear_kernel(x)
-            elif kernel_name == 'add_chi2':
-                return additive_chi2_kernel(x)
-            elif kernel_name == 'chi2':
-                return chi2_kernel(x)
-            elif kernel_name == 'poly':
-                return polynomial_kernel(x)
-            elif kernel_name == 'laplace':
-                return laplacian_kernel(x)
-        else:
-
-            assert x.shape[1] == y.shape[1]
-            if kernel_name == 'rbf':
-                return rbf_kernel(x, y)
-            elif kernel_name == 'linear':
-                return linear_kernel(x,y)
-            elif kernel_name == 'add_chi2':
-                return additive_chi2_kernel(x, y)
-            elif kernel_name == 'chi2':
-                return chi2_kernel(x, y)
-            elif kernel_name == 'poly':
-                return polynomial_kernel(x, y)
-            elif kernel_name == 'laplace':
-                return laplacian_kernel(x, y)
-
+        self.kernel_dict = {"rbf": lambda x, y = None: rbf_kernel(x, y),
+                            "linear": lambda x, y = None: linear_kernel(x, y),
+                            "add_chi2": lambda x, y = None: additive_chi2_kernel(x, y),
+                            "chi2": lambda x, y = None: chi2_kernel(x, y),
+                            "poly": lambda x, y = None: polynomial_kernel(x, y),
+                            "laplace": lambda x, y = None: laplacian_kernel(x, y)}
 
     def _transform_label(self, y):
         enc = OneHotEncoder(handle_unknown='ignore')
@@ -71,6 +45,10 @@ class KRVFL_plus(object):
             print('the label must be reshaped before being transformed')
         return target
 
+    def _softmax(self, x):
+        out = np.exp(x)
+        return out/ np.sum(out, axis=1, keepdims=True)
+
     def fit(self, train_x, addition_x, train_y, C = 0.1, gamma = 1000):
         """
         Params:
@@ -81,10 +59,8 @@ class KRVFL_plus(object):
         :param C: default=0.1, the penelty parameter
         :param gamma: default = 1000, the trade-off parameter balancing between training data and privileged data
         """
-        omega1 = self._generate_kernel_matrix(train_x, 'linear')
-        omega2 = self._generate_kernel_matrix(train_x, self.kernel_name)
-        omega_p_1 = self._generate_kernel_matrix(addition_x, 'linear')
-        omega_p_2 = self._generate_kernel_matrix(addition_x, self.kernel_name)
+        omega1, omega2 = self.kernel_dict["linear"](train_x), self.kernel_dict[self.kernel_name](train_x)
+        omega_p_1, omega_p_2 = self.kernel_dict["linear"](addition_x), self.kernel_dict[self.kernel_name](addition_x)
         if self.type == 'classification':
             one_hot_target = self._transform_label(train_y)
         elif self.type == 'regression':
@@ -102,11 +78,21 @@ class KRVFL_plus(object):
         :param test_x: a NumofTestSamples * NumofFeatures matrix, test data
         :return: y_hat, the predicted labels
         """
-        omega_test_1 = self._generate_kernel_matrix(test_x, kernel_name= 'linear', y = train_x)
-        omega_test_2 = self._generate_kernel_matrix(test_x, kernel_name= self.kernel_name, y = train_x)
-        y_hat_temp = (omega_test_1 + omega_test_2).dot(self.beta)
+        y_hat = self.predict_proba(train_x, test_x)
         if self.type == 'classification':
-            y_hat = np.argmax(y_hat_temp, axis=1)
+            y_hat = np.argmax(y_hat, axis=1)
             return y_hat
+        else:
+            return y_hat
+
+    def predict_proba(self, train_x, test_x):
+
+        omega_test_1,  omega_test_2 = self.kernel_dict["linear"](test_x, train_x), \
+                                      self.kernel_dict[self.kernel_name](test_x, train_x)
+        y_hat_temp = (omega_test_1 + omega_test_2).dot(self.beta)
+        if self.type == "classification":
+
+            y_hat_prob = self._softmax(y_hat_temp)
+            return y_hat_prob
         else:
             return y_hat_temp

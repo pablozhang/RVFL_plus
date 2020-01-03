@@ -1,13 +1,13 @@
+from numpy.linalg import multi_dot
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder
-from numpy.linalg import multi_dot
 
 
 class RVFL_plus(object):
     """
     The code of random vector functional link-plus (RVFL+) network is implemented in Python. If you would like
-    to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Zhi-Xin Yang. A new learning paradigm 
-    for random vector functional-link network: RVFL+. Neural Networks, 122 (2019) pp.94-105"
+    to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Yang, Zhi-Xin. A new learning paradigm
+    for random vector functional-link network: RVFL+. Neural Networks, 122 (2020) pp.94-105"
 
     Parameters
     ----------
@@ -34,6 +34,16 @@ class RVFL_plus(object):
         self.scale_value = scale_value
         self.activation_name = activation_name
         self.type = type
+        self._activation_dict = {'sigmoid': lambda x : 1.0 / (1.0 + np.exp(-x)),
+                                 "sin": lambda x: np.sin(x),
+                                 "tanh": lambda x: np.tanh(x),
+                                 "hardlim": lambda x:np.array(x > 0.0, dtype=float),
+                                 "softlim":lambda x:np.clip(x, 0.0, 1.0),
+                                 "gaussianRBF": lambda x:np.exp(-pow(x, 2.0)),
+                                 "multiquadricRBF": lambda x:np.sqrt(1.0 + pow(x, 2.0)),
+                                 "inv_multiquadricRBF": lambda x : 1.0 / (np.sqrt(1.0 + pow(x, 2.0))),
+                                 "tribas": lambda x: np.clip(1.0 - np.fabs(x), 0.0, 1.0),
+                                 "inv_tribas": lambda x: np.clip(np.fabs(x), 0.0, 1.0)}
 
 
     def _generate_randomlayer(self, X_train, X_addition):
@@ -55,32 +65,6 @@ class RVFL_plus(object):
 
         return weights, biases, pf_weights
 
-    def _activation_function(self, x, activation_name):
-
-        if activation_name == 'sigmoid':
-            return 1.0 / (1.0 + np.exp(-x))
-        elif activation_name == 'sin':
-            return np.sin(x)
-        elif activation_name == 'tanh':
-            return np.tanh(x)
-        elif activation_name == 'hardlim':
-            return np.array(x > 0.0, dtype=float)
-        elif activation_name == 'softlim':
-            return np.clip(x, 0.0, 1.0)
-        elif activation_name == 'gaussianRBF':
-            return np.exp(-pow(x, 2.0))
-        elif activation_name == 'multiquadricRBF':
-            return np.sqrt(1.0 + pow(x, 2.0))
-        elif activation_name == 'inv_multiquadricRBF':
-            return 1.0 / (np.sqrt(1.0 + pow(x, 2.0)))
-        elif activation_name == 'tribas':
-            return np.clip(1.0 - np.fabs(x), 0.0, 1.0)
-        elif activation_name == 'inv_tribas':
-            return np.clip(np.fabs(x), 0.0, 1.0)
-
-        else:
-            raise Exception('The activation function is not supported now!')
-
     def _transform_label(self, y):
         enc = OneHotEncoder(handle_unknown='ignore')
         try:
@@ -90,6 +74,10 @@ class RVFL_plus(object):
             target = enc.fit_transform(y.reshape(-1, 1)).toarray()
             print('the label must be reshaped before being transformed')
         return target
+
+    def _softmax(self, x):
+        out = np.exp(x)
+        return out/ np.sum(out, axis=1, keepdims=True)
 
     def fit(self,train_x, addition_x, train_y, gamma=1000, C=0.1):
 
@@ -107,8 +95,11 @@ class RVFL_plus(object):
         self.weights, self.biases, self.pf_weights = self._generate_randomlayer(train_x, addition_x)
         train_g = train_x.dot(self.weights) + self.biases
         train_pg = addition_x.dot(self.pf_weights) + self.biases
-        H, PH = self._activation_function(train_g, activation_name=self.activation_name), \
-                self._activation_function(train_pg, activation_name=self.activation_name)
+        try:
+            H, PH = self._activation_dict[self.activation_name](train_g), \
+                    self._activation_dict[self.activation_name](train_pg)
+        except:
+            raise Exception('The activation function is not supported now!')
         H, PH = np.hstack((H, train_x)), np.hstack((PH, addition_x))
         if self.type == 'classification':
             one_hot_target = self._transform_label(train_y)
@@ -127,12 +118,20 @@ class RVFL_plus(object):
         :param test_x: a NumofTestSamples * NumofFeatures matrix, test data
         :return: y_hat, the predicted labels
         """
+        y_hat = self.predict_proba(test_x)
+        if self.type == 'classification':
+            y_hat = np.argmax(y_hat, axis=1)
+            return y_hat
+        else:
+            return y_hat
+
+    def predict_proba(self, test_x):
         test_g = test_x.dot(self.weights) + self.biases
-        test_h = self._activation_function(test_g, activation_name=self.activation_name)
+        test_h = self._activation_dict[self.activation_name](test_g)
         test_h = np.hstack((test_h, test_x))
         y_hat_temp = test_h.dot(self.beta)
-        if self.type == 'classification':
-            y_hat = np.argmax(y_hat_temp, axis=1)
-            return y_hat
+        if self.type == "classification":
+            y_hat_prob = self._softmax(y_hat_temp)
+            return y_hat_prob
         else:
             return y_hat_temp

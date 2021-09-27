@@ -8,10 +8,8 @@ class RVFL_plus(object):
     The code of random vector functional link-plus (RVFL+) network is implemented in Python. If you would like
     to use it in your researches, please cite the paper "Zhang, Peng-Bo, and Yang, Zhi-Xin. A new learning paradigm
     for random vector functional-link network: RVFL+. Neural Networks, 122 (2020) pp.94-105"
-
     Parameters
     ----------
-
     hidden_node : default = 100, the number of enhancement node between the input layer and the hidden layer
     random_type :default = 'uniform', please select random type from "uniform" or "gaussian"
     scale_value : default=1.0, a positive value for initialing reasonably weights and biases in the first hidden layer
@@ -19,21 +17,20 @@ class RVFL_plus(object):
                      'sin', 'hardlim', 'softlim', 'gaussianRBF', 'multiquadricRBF', 'inv_multiquadricRBF', 'tribas',
                        'inv_tribas'}
     type: default='classification', classification or regression
-
     Example
     --------
     model = RVFL_plus()
     model.fit(train_x, addition_x, train_y)
     y_hat = model.predict(test_x)
     """
-    def __init__(self, hidden_node=100, random_type="uniform",
-                 scale_value=1.0, activation_name="sigmoid", type="classification"):
+    def __init__(self, hidden_node=1000, random_type="uniform",
+                 scale_value=1.0, activation_name="sigmoid", task_type="classification"):
 
         self.hidden_node = hidden_node
         self.random_type = random_type
         self.scale_value = scale_value
         self.activation_name = activation_name
-        self.type = type
+        self.type = task_type
         self._activation_dict = {'sigmoid': lambda x : 1.0 / (1.0 + np.exp(-x)),
                                  "sin": lambda x: np.sin(x),
                                  "tanh": lambda x: np.tanh(x),
@@ -51,14 +48,14 @@ class RVFL_plus(object):
         _, num_pfeas = X_addition.shape
         # np.random.seed(0)
         if self.random_type == 'uniform':
-            weights = (np.random.rand(num_feas, num_samples) * 2.0 - 1.0) * self.scale_value
-            biases = np.random.rand(1, num_samples) * self.scale_value
-            pf_weights = (np.random.rand(num_pfeas, num_samples) * 2.0 - 1.0) * self.scale_value
+            weights = (np.random.rand(self.hidden_node, num_feas) * 2.0 - 1.0) * self.scale_value 
+            biases = np.random.rand(self.hidden_node, 1) * self.scale_value
+            pf_weights = (np.random.rand(self.hidden_node, num_pfeas) * 2.0 - 1.0) * self.scale_value
 
         elif self.random_type == 'gaussian':
-            weights = np.random.randn(num_feas, num_samples)
-            biases = np.random.randn(1, num_samples)
-            pf_weights = np.random.randn(num_feas, num_samples)
+            weights = np.random.randn(self.hidden_node, num_feas)
+            biases = np.random.randn(self.hidden_node, 1)
+            pf_weights = np.random.randn(self.hidden_node, num_pfeas)
 
         else:
             raise Exception('The random type is not supported now!')
@@ -89,27 +86,27 @@ class RVFL_plus(object):
         :param train_y: training label
         :param gamma: default = 1000, the trade-off parameter balancing between training data and privileged data
         :param C: default=0.1, the penelty parameter
-
         """
 
         self.weights, self.biases, self.pf_weights = self._generate_randomlayer(train_x, addition_x)
-        train_g = train_x.dot(self.weights) + self.biases
-        train_pg = addition_x.dot(self.pf_weights) + self.biases
+        train_g = self.weights.dot(train_x.T) + self.biases
+        train_pg = self.pf_weights.dot(addition_x.T) + self.biases
         try:
             H, PH = self._activation_dict[self.activation_name](train_g), \
                     self._activation_dict[self.activation_name](train_pg)
         except:
             raise Exception('The activation function is not supported now!')
-        H, PH = np.hstack((H, train_x)), np.hstack((PH, addition_x))
+
+        H, PH = np.concatenate([H, train_x.T]), np.concatenate([PH, addition_x.T])
         if self.type == 'classification':
             one_hot_target = self._transform_label(train_y)
         elif self.type == 'regression':
             one_hot_target = train_y
         else:
             raise Exception("The type is not supported now! please select classification or regression.")
-        part_a = np.linalg.inv(H.dot(H.T) + 1 / gamma * PH.dot(PH.T) + np.eye(train_x.shape[0]) / C)
-        part_b = one_hot_target - C / gamma * multi_dot([PH, PH.T, np.ones(one_hot_target.shape)])
-        self.beta = multi_dot([H.T, part_a, part_b])
+        part_a = np.linalg.inv(H.T.dot(H) + 1 / gamma * PH.T.dot(PH) + np.eye(train_x.shape[0]) / C)
+        part_b = one_hot_target - C / gamma * multi_dot([PH.T, PH, np.ones(one_hot_target.shape)])
+        self.beta = multi_dot([H, part_a, part_b])
 
     def predict(self, test_x):
         """
@@ -126,10 +123,10 @@ class RVFL_plus(object):
             return y_hat
 
     def predict_proba(self, test_x):
-        test_g = test_x.dot(self.weights) + self.biases
+        test_g = self.weights.dot(test_x.T) + self.biases
         test_h = self._activation_dict[self.activation_name](test_g)
-        test_h = np.hstack((test_h, test_x))
-        y_hat_temp = test_h.dot(self.beta)
+        test_h = np.concatenate([test_h, test_x.T])
+        y_hat_temp = test_h.T.dot(self.beta)
         if self.type == "classification":
             y_hat_prob = self._softmax(y_hat_temp)
             return y_hat_prob

@@ -46,8 +46,12 @@ class KRVFL_plus(object):
         return target
 
     def _softmax(self, x):
-        out = np.exp(x)
-        return out/ np.sum(out, axis=1, keepdims=True)
+
+        max_value = np.max(x,axis=1,keepdims=True)
+        e_x = np.exp(x - max_value) 
+        sum_value = np.sum(e_x,axis=1,keepdims=True)
+        y = e_x / sum_value
+        return y
 
     def fit(self, train_x, addition_x, train_y, C = 0.1, gamma = 1000):
         """
